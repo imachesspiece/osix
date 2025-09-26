@@ -25,6 +25,17 @@ export interface Person {
   // Any other fields from the schema can be added here
 }
 
+export interface PersonSearchCriteria {
+  firstname?: string;
+  middlename?: string;
+  lastname?: string;
+  dob?: string;
+  city?: string;
+  st?: string;
+  zip?: string;
+  ssn?: string;
+}
+
 // Corresponds to the schema of 'okaloosa' court records index
 export interface CourtRecord {
   objectID: string; // Algolia's unique ID
