@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import SearchForm from './components/SearchForm';
 import PersonCard from './components/PersonCard';
 import DetailReportView from './components/DetailReportView';
@@ -7,11 +7,22 @@ import LoadingSpinner from './components/ui/LoadingSpinner';
 import AlertMessage from './components/ui/AlertMessage';
 import { searchPersons, searchCourtRecords } from './services/algoliaService';
 import { generateBackgroundSummary } from './services/geminiService';
-import type { Person, CourtRecord } from './types';
+import type { Person, CourtRecord, PersonSearchCriteria } from './types';
 import { FetchStatus } from './types';
 
+const SEARCH_LABELS: Record<keyof PersonSearchCriteria, string> = {
+  firstname: 'First Name',
+  middlename: 'Middle Name',
+  lastname: 'Last Name',
+  dob: 'DOB',
+  city: 'City',
+  st: 'State',
+  zip: 'ZIP',
+  ssn: 'SSN',
+};
+
 const App: React.FC = () => {
-  const [personSearchQuery, setPersonSearchQuery] = useState<string>('');
+  const [personSearchCriteria, setPersonSearchCriteria] = useState<PersonSearchCriteria | null>(null);
   const [personResults, setPersonResults] = useState<Person[]>([]);
   const [personSearchStatus, setPersonSearchStatus] = useState<FetchStatus>(FetchStatus.IDLE);
   const [personSearchError, setPersonSearchError] = useState<string | null>(null);
@@ -26,8 +37,23 @@ const App: React.FC = () => {
   const [geminiStatus, setGeminiStatus] = useState<FetchStatus>(FetchStatus.IDLE);
   const [geminiError, setGeminiError] = useState<string | null>(null);
 
-  const handlePersonSearch = useCallback(async (query: string) => {
-    setPersonSearchQuery(query);
+  const formattedCriteria = useMemo(() => {
+    if (!personSearchCriteria) {
+      return '';
+    }
+
+    const entries = Object.entries(personSearchCriteria).filter(([, value]) => Boolean(value));
+    if (entries.length === 0) {
+      return '';
+    }
+
+    return entries
+      .map(([key, value]) => `${SEARCH_LABELS[key as keyof PersonSearchCriteria]}: ${value}`)
+      .join(' • ');
+  }, [personSearchCriteria]);
+
+  const handlePersonSearch = useCallback(async (criteria: PersonSearchCriteria) => {
+    setPersonSearchCriteria(criteria);
     setPersonSearchStatus(FetchStatus.LOADING);
     setPersonSearchError(null);
     setSelectedPerson(null); // Clear previous selection
@@ -37,7 +63,7 @@ const App: React.FC = () => {
     setGeminiStatus(FetchStatus.IDLE);
 
     try {
-      const results = await searchPersons(query);
+      const results = await searchPersons(criteria);
       setPersonResults(results);
       setPersonSearchStatus(FetchStatus.SUCCESS);
       if (results.length === 0) {
@@ -78,13 +104,9 @@ const App: React.FC = () => {
       setCourtRecordsStatus(FetchStatus.LOADING);
       setCourtRecordsError(null);
       try {
-        if (selectedPerson.firstname && selectedPerson.lastname) {
-          const records = await searchCourtRecords(selectedPerson.firstname, selectedPerson.lastname, selectedPerson.dob);
-          setCourtRecords(records);
-          setCourtRecordsStatus(FetchStatus.SUCCESS);
-        } else {
-          throw new Error("Selected person is missing first or last name, cannot search court records.");
-        }
+        const records = await searchCourtRecords(selectedPerson);
+        setCourtRecords(records);
+        setCourtRecordsStatus(FetchStatus.SUCCESS);
       } catch (error) {
         console.error('Court records search error:', error);
         const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred while fetching court records.';
@@ -126,10 +148,10 @@ const App: React.FC = () => {
   }, [selectedPerson, courtRecords, courtRecordsStatus]); // Runs when selectedPerson, courtRecords, or courtRecordsStatus change
 
   return (
-    <div className="min-h-screen container mx-auto p-4 sm:p-6 lg:p-8">
+    <div className="min-h-screen container mx-auto p-4 sm:p-6 lg:p-8 space-y-8">
       <header className="text-center mb-8">
         <h1 className="text-4xl sm:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-cyan-300">
-          Person Intel Nexus
+          Insight Investigative Console
         </h1>
         <p className="text-slate-400 mt-2 text-lg">
           Identify persons of interest and build comprehensive background reports.
@@ -144,19 +166,22 @@ const App: React.FC = () => {
             <LoadingSpinner text="Searching persons..." size="lg" />
           </div>
         )}
-        
+
         {personSearchStatus === FetchStatus.ERROR && personSearchError && (
-           <AlertMessage message={personSearchError} type="error" className="mt-6" />
+          <AlertMessage message={personSearchError} type="error" className="mt-6" />
         )}
 
         {personSearchStatus === FetchStatus.SUCCESS && personResults.length === 0 && personSearchError && (
-            <AlertMessage message={personSearchError} type="info" className="mt-6" />
+          <AlertMessage message={personSearchError} type="info" className="mt-6" />
         )}
 
 
         {personResults.length > 0 && (
           <section className="bg-slate-800/70 backdrop-blur-sm shadow-xl rounded-lg p-6">
             <h2 className="text-2xl font-semibold text-slate-100 mb-4">Search Results ({personResults.length})</h2>
+            {formattedCriteria && (
+              <p className="text-sm text-slate-400 mb-4">Filters applied: {formattedCriteria}</p>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 max-h-[600px] overflow-y-auto p-1">
               {personResults.map((person) => (
                 <PersonCard
