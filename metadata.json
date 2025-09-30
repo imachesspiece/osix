@@ -1,6 +1,6 @@
 {
-  "name": "Person Intel Nexus",
-  "description": "An application to search for individuals, retrieve personal data, court records, and generate AI-powered background summaries.",
+  "name": "Insight",
+  "description": "Secure investigative console for linking Algolia person data with Okaloosa County court records.",
   "requestFramePermissions": [],
   "prompt": ""
 }
