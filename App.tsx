@@ -1,187 +1,265 @@
+import React from 'react';
 
-import React, { useState, useEffect, useCallback } from 'react';
-import SearchForm from './components/SearchForm';
-import PersonCard from './components/PersonCard';
-import DetailReportView from './components/DetailReportView';
-import LoadingSpinner from './components/ui/LoadingSpinner';
-import AlertMessage from './components/ui/AlertMessage';
-import { searchPersons, searchCourtRecords } from './services/algoliaService';
-import { generateBackgroundSummary } from './services/geminiService';
-import type { Person, CourtRecord } from './types';
-import { FetchStatus } from './types';
+const brandFeatures = [
+  {
+    title: 'Master Name Index',
+    description:
+      'Normalize aliases, identity numbers, phones, emails, and addresses into a continuous identity history.',
+  },
+  {
+    title: 'Person of Interest Search',
+    description: 'Search open-source, litigation, and reputational datasets with risk-scored insights.',
+  },
+  {
+    title: 'Document Intelligence',
+    description:
+      'OCR court records and police reports to extract entities, surface charges, and auto-link associated files.',
+  },
+  {
+    title: 'Social Signal Monitoring',
+    description:
+      'Track social media exposure, sentiment shifts, and emerging risk narratives across platforms.',
+  },
+  {
+    title: 'Link Analysis Graph',
+    description: 'Reveal relationships between people, entities, and incidents with correlation scoring.',
+  },
+  {
+    title: 'Corporate Security Briefings',
+    description:
+      'Deliver executive-grade dossiers with OPSEC findings, threat indicators, and compliance-ready exhibits.',
+  },
+];
+
+const workflowSteps = [
+  {
+    title: 'Intake & Scoping',
+    description: 'Define investigative goals, collection parameters, and legal boundaries.',
+  },
+  {
+    title: 'Collection & OCR',
+    description: 'Ingest court records, police reports, and open-source data with automated extraction.',
+  },
+  {
+    title: 'Entity Correlation',
+    description: 'Link individuals, aliases, vehicles, and addresses across incidents and sources.',
+  },
+  {
+    title: 'Analyst Review',
+    description: 'Analyst validation, threat scoring, and OPSEC exposure assessment.',
+  },
+  {
+    title: 'Client Reporting',
+    description: 'Generate executive summaries, exhibits, and case-ready intelligence packs.',
+  },
+];
 
 const App: React.FC = () => {
-  const [personSearchQuery, setPersonSearchQuery] = useState<string>('');
-  const [personResults, setPersonResults] = useState<Person[]>([]);
-  const [personSearchStatus, setPersonSearchStatus] = useState<FetchStatus>(FetchStatus.IDLE);
-  const [personSearchError, setPersonSearchError] = useState<string | null>(null);
-
-  const [selectedPerson, setSelectedPerson] = useState<Person | null>(null);
-  
-  const [courtRecords, setCourtRecords] = useState<CourtRecord[]>([]);
-  const [courtRecordsStatus, setCourtRecordsStatus] = useState<FetchStatus>(FetchStatus.IDLE);
-  const [courtRecordsError, setCourtRecordsError] = useState<string | null>(null);
-
-  const [geminiSummary, setGeminiSummary] = useState<string | null>(null);
-  const [geminiStatus, setGeminiStatus] = useState<FetchStatus>(FetchStatus.IDLE);
-  const [geminiError, setGeminiError] = useState<string | null>(null);
-
-  const handlePersonSearch = useCallback(async (query: string) => {
-    setPersonSearchQuery(query);
-    setPersonSearchStatus(FetchStatus.LOADING);
-    setPersonSearchError(null);
-    setSelectedPerson(null); // Clear previous selection
-    setCourtRecords([]);
-    setGeminiSummary(null);
-    setCourtRecordsStatus(FetchStatus.IDLE);
-    setGeminiStatus(FetchStatus.IDLE);
-
-    try {
-      const results = await searchPersons(query);
-      setPersonResults(results);
-      setPersonSearchStatus(FetchStatus.SUCCESS);
-      if (results.length === 0) {
-         setPersonSearchError("No persons found matching your query.");
-      }
-    } catch (error) {
-      console.error('Person search error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred during person search.';
-      setPersonSearchError(errorMessage);
-      setPersonSearchStatus(FetchStatus.ERROR);
-      setPersonResults([]);
-    }
-  }, []);
-
-  const handleSelectPerson = useCallback((person: Person) => {
-    if (selectedPerson?.objectID === person.objectID) {
-      // If already selected, deselect (optional behavior)
-      // setSelectedPerson(null);
-      // setCourtRecords([]);
-      // setGeminiSummary(null);
-      return; // Or do nothing if re-clicking doesn't change state
-    }
-    setSelectedPerson(person);
-    setCourtRecordsStatus(FetchStatus.IDLE);
-    setGeminiStatus(FetchStatus.IDLE);
-    setCourtRecords([]); // Clear previous records
-    setGeminiSummary(null); // Clear previous summary
-  }, [selectedPerson]);
-
-  // Effect to fetch court records when a person is selected
-  useEffect(() => {
-    if (!selectedPerson) {
-      setCourtRecordsStatus(FetchStatus.IDLE);
-      return;
-    }
-
-    const fetchCourtData = async () => {
-      setCourtRecordsStatus(FetchStatus.LOADING);
-      setCourtRecordsError(null);
-      try {
-        if (selectedPerson.firstname && selectedPerson.lastname) {
-          const records = await searchCourtRecords(selectedPerson.firstname, selectedPerson.lastname, selectedPerson.dob);
-          setCourtRecords(records);
-          setCourtRecordsStatus(FetchStatus.SUCCESS);
-        } else {
-          throw new Error("Selected person is missing first or last name, cannot search court records.");
-        }
-      } catch (error) {
-        console.error('Court records search error:', error);
-        const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred while fetching court records.';
-        setCourtRecordsError(errorMessage);
-        setCourtRecordsStatus(FetchStatus.ERROR);
-        setCourtRecords([]);
-      }
-    };
-
-    fetchCourtData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedPerson]); // Runs when selectedPerson changes
-
-  // Effect to generate Gemini summary when person and court records are available
-  useEffect(() => {
-    if (!selectedPerson || courtRecordsStatus !== FetchStatus.SUCCESS) {
-      setGeminiStatus(FetchStatus.IDLE);
-      return;
-    }
-
-    const generateSummary = async () => {
-      setGeminiStatus(FetchStatus.LOADING);
-      setGeminiError(null);
-      try {
-        const summary = await generateBackgroundSummary(selectedPerson, courtRecords);
-        setGeminiSummary(summary);
-        setGeminiStatus(FetchStatus.SUCCESS);
-      } catch (error) {
-        console.error('Gemini summary generation error:', error);
-        const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred while generating summary.';
-        setGeminiError(errorMessage);
-        setGeminiStatus(FetchStatus.ERROR);
-        setGeminiSummary(null);
-      }
-    };
-    
-    generateSummary();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedPerson, courtRecords, courtRecordsStatus]); // Runs when selectedPerson, courtRecords, or courtRecordsStatus change
-
   return (
-    <div className="min-h-screen container mx-auto p-4 sm:p-6 lg:p-8">
-      <header className="text-center mb-8">
-        <h1 className="text-4xl sm:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-cyan-300">
-          Person Intel Nexus
-        </h1>
-        <p className="text-slate-400 mt-2 text-lg">
-          Identify persons of interest and build comprehensive background reports.
-        </p>
+    <div className="min-h-screen bg-[#07090c] text-slate-100">
+      <header className="border-b border-white/5 bg-[#07090c]/90 backdrop-blur">
+        <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-6">
+          <div className="flex items-center gap-4">
+            <div className="relative h-12 w-12">
+              <div className="absolute inset-0 rounded-full bg-gradient-to-br from-amber-300 to-amber-500 opacity-90 blur-sm" />
+              <div className="relative flex h-12 w-12 items-center justify-center rounded-full border border-amber-400/60 bg-[#0d1118]">
+                <svg viewBox="0 0 48 48" className="h-7 w-7 text-amber-300">
+                  <path
+                    fill="currentColor"
+                    d="M24 8 8 18v12l16 10 16-10V18L24 8Zm0 5.3 10.2 6.2L24 25.7 13.8 19.5 24 13.3Zm0 22.3-10.2-6.2V21l10.2 6.2L34.2 21v8.1L24 35.6Z"
+                  />
+                  <circle cx="24" cy="23" r="5" fill="#0d1118" stroke="currentColor" strokeWidth="2" />
+                </svg>
+              </div>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-[0.4em] text-slate-400">Veilstone</p>
+              <p className="text-lg font-semibold text-white">Analytics</p>
+            </div>
+          </div>
+          <nav className="hidden items-center gap-8 text-sm text-slate-300 md:flex">
+            <a className="hover:text-white" href="#capabilities">
+              Capabilities
+            </a>
+            <a className="hover:text-white" href="#workflow">
+              Workflow
+            </a>
+            <a className="hover:text-white" href="#portal">
+              Client Portal
+            </a>
+            <button className="rounded-full border border-amber-400/60 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-amber-200 hover:bg-amber-400/10">
+              Request Briefing
+            </button>
+          </nav>
+        </div>
       </header>
 
-      <main className="space-y-8">
-        <SearchForm onSearch={handlePersonSearch} isLoading={personSearchStatus === FetchStatus.LOADING} />
-
-        {personSearchStatus === FetchStatus.LOADING && personResults.length === 0 && (
-          <div className="flex justify-center mt-8">
-            <LoadingSpinner text="Searching persons..." size="lg" />
-          </div>
-        )}
-        
-        {personSearchStatus === FetchStatus.ERROR && personSearchError && (
-           <AlertMessage message={personSearchError} type="error" className="mt-6" />
-        )}
-
-        {personSearchStatus === FetchStatus.SUCCESS && personResults.length === 0 && personSearchError && (
-            <AlertMessage message={personSearchError} type="info" className="mt-6" />
-        )}
-
-
-        {personResults.length > 0 && (
-          <section className="bg-slate-800/70 backdrop-blur-sm shadow-xl rounded-lg p-6">
-            <h2 className="text-2xl font-semibold text-slate-100 mb-4">Search Results ({personResults.length})</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 max-h-[600px] overflow-y-auto p-1">
-              {personResults.map((person) => (
-                <PersonCard
-                  key={person.objectID}
-                  person={person}
-                  onSelectPerson={handleSelectPerson}
-                  isSelected={selectedPerson?.objectID === person.objectID}
-                />
+      <main className="mx-auto w-full max-w-6xl px-6 pb-20 pt-12">
+        <section className="grid gap-10 lg:grid-cols-[1.1fr_0.9fr]">
+          <div className="space-y-6">
+            <p className="text-xs font-semibold uppercase tracking-[0.5em] text-amber-300/90">
+              Open Source Intelligence Organization
+            </p>
+            <h1 className="text-4xl font-semibold leading-tight text-white sm:text-5xl">
+              Veilstone Analytics delivers decisive, defensible intelligence.
+            </h1>
+            <p className="text-lg text-slate-300">
+              We specialize in skip tracing, OSINT collection, social media monitoring, OPSEC analysis, and detailed
+              background checks. Our analysts connect identity history, criminal records, and corporate security
+              signals into precise dossiers and investigative narratives.
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {[
+                'Identity history investigations and alias tracking.',
+                'Criminal history reviews and civil litigation context.',
+                'Corporate security risk assessments and partner screening.',
+                'Dossiers with evidentiary timelines and source validation.',
+              ].map((item) => (
+                <div key={item} className="rounded-xl border border-white/10 bg-white/5 p-4 text-sm text-slate-200">
+                  {item}
+                </div>
               ))}
             </div>
-          </section>
-        )}
+            <div className="flex flex-wrap gap-3">
+              <button className="rounded-full bg-amber-400 px-5 py-2 text-sm font-semibold text-slate-900 hover:bg-amber-300">
+                Start an Intake Call
+              </button>
+              <button className="rounded-full border border-white/15 px-5 py-2 text-sm text-slate-200 hover:border-white/30">
+                Download Capability Deck
+              </button>
+            </div>
+          </div>
 
-        <DetailReportView
-          selectedPerson={selectedPerson}
-          courtRecords={courtRecords}
-          geminiSummary={geminiSummary}
-          courtRecordsStatus={courtRecordsStatus}
-          geminiStatus={geminiStatus}
-          courtRecordsError={courtRecordsError}
-          geminiError={geminiError}
-        />
+          <div id="portal" className="space-y-6 rounded-2xl border border-white/10 bg-white/5 p-6 shadow-2xl">
+            <div>
+              <p className="text-xs uppercase tracking-[0.4em] text-amber-200/70">Client Portal</p>
+              <h2 className="text-2xl font-semibold text-white">Secure Analyst Access</h2>
+              <p className="mt-2 text-sm text-slate-400">
+                Authenticate into investigations, master name indices, and entity correlation dashboards.
+              </p>
+            </div>
+            <form className="space-y-4">
+              <label className="block text-sm text-slate-300">
+                Email
+                <input
+                  type="email"
+                  placeholder="analyst@veilstone.com"
+                  className="mt-2 w-full rounded-lg border border-white/10 bg-[#0b0f15] px-4 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-amber-300 focus:outline-none"
+                />
+              </label>
+              <label className="block text-sm text-slate-300">
+                Password
+                <input
+                  type="password"
+                  placeholder="••••••••••"
+                  className="mt-2 w-full rounded-lg border border-white/10 bg-[#0b0f15] px-4 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-amber-300 focus:outline-none"
+                />
+              </label>
+              <label className="flex items-center gap-2 text-xs text-slate-400">
+                <input type="checkbox" className="h-4 w-4 rounded border-white/20 bg-[#0b0f15] text-amber-400" />
+                Remember this device for 12 hours
+              </label>
+              <button className="w-full rounded-lg bg-amber-400 px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-amber-300">
+                Sign In to Portal
+              </button>
+              <div className="flex items-center justify-between text-xs text-slate-500">
+                <span>Need MFA reset?</span>
+                <a className="text-amber-200 hover:text-amber-100" href="#">
+                  Contact support
+                </a>
+              </div>
+            </form>
+            <div className="rounded-xl border border-white/10 bg-[#0b0f15] p-4 text-xs text-slate-400">
+              Portal features: case assignment, audit logs, secure messaging, and exportable intelligence briefs.
+            </div>
+          </div>
+        </section>
+
+        <section id="capabilities" className="mt-16">
+          <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.4em] text-amber-200/70">Investigative Capabilities</p>
+              <h2 className="text-3xl font-semibold text-white">OSINT products built for high-stakes decisions.</h2>
+            </div>
+            <p className="max-w-xl text-sm text-slate-400">
+              Our platform unifies multi-source intelligence, automated extraction, and analyst verification to
+              deliver operational clarity across investigations.
+            </p>
+          </div>
+          <div className="mt-8 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {brandFeatures.map((feature) => (
+              <div key={feature.title} className="rounded-2xl border border-white/10 bg-white/5 p-6">
+                <h3 className="text-lg font-semibold text-white">{feature.title}</h3>
+                <p className="mt-3 text-sm text-slate-300">{feature.description}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section id="workflow" className="mt-16 grid gap-10 lg:grid-cols-[0.9fr_1.1fr]">
+          <div className="space-y-5">
+            <p className="text-xs uppercase tracking-[0.4em] text-amber-200/70">Workflow</p>
+            <h2 className="text-3xl font-semibold text-white">Document intelligence with automated entity linking.</h2>
+            <p className="text-sm text-slate-300">
+              The document management system ingests court records, police reports, and investigative notes, applying
+              OCR extraction to build entity profiles that remain linked across related reports, incidents, and
+              jurisdictions.
+            </p>
+            <ul className="space-y-3 text-sm text-slate-300">
+              {[
+                'Entity extraction for names, dates, aliases, charges, and locations.',
+                'Profile enrichment with identity history and cross-report associations.',
+                'Chain-of-custody metadata and document provenance tracking.',
+                'Automated alerts when new filings connect to existing investigations.',
+              ].map((item) => (
+                <li key={item} className="flex gap-3">
+                  <span className="mt-1 h-2 w-2 rounded-full bg-amber-300" />
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+            <h3 className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-400">
+              Investigative Timeline
+            </h3>
+            <div className="mt-6 space-y-5">
+              {workflowSteps.map((step, index) => (
+                <div key={step.title} className="rounded-xl border border-white/10 bg-[#0b0f15] p-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold text-white">{step.title}</p>
+                    <span className="text-xs text-amber-200/70">0{index + 1}</span>
+                  </div>
+                  <p className="mt-2 text-xs text-slate-400">{step.description}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="mt-16 rounded-2xl border border-amber-400/20 bg-gradient-to-r from-amber-500/10 via-transparent to-transparent p-8">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.4em] text-amber-200/70">Security & Compliance</p>
+              <h3 className="text-2xl font-semibold text-white">OPSEC analysis aligned to your risk posture.</h3>
+              <p className="mt-2 text-sm text-slate-300">
+                Ensure every investigation respects legal boundaries, privacy constraints, and internal security
+                requirements with audit-ready reporting.
+              </p>
+            </div>
+            <button className="rounded-full bg-white/90 px-5 py-2 text-sm font-semibold text-slate-900 hover:bg-white">
+              Start a Confidential Inquiry
+            </button>
+          </div>
+        </section>
       </main>
-      <footer className="text-center py-8 mt-12 border-t border-slate-700">
-        <p className="text-sm text-slate-500">Person Intel Nexus &copy; {new Date().getFullYear()}. For illustrative purposes only.</p>
+
+      <footer className="border-t border-white/5 bg-[#07090c] px-6 py-10 text-sm text-slate-500">
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <span>© {new Date().getFullYear()} Veilstone Analytics. All rights reserved.</span>
+          <span>OSINT • Skip Tracing • Background Checks • Corporate Security</span>
+        </div>
       </footer>
     </div>
   );
